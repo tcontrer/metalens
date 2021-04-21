@@ -2,6 +2,13 @@ import pyfirmata
 import time
 import csv
 
+MAX_Z = 231. # Mazimum allowable height in mm
+GRATING_LED_POSITION = 70. # LED position for alignment with grating
+BELOW_GRATING_LED_POSITION = 67 # LED position for alignment below grating
+BELOW_MOUNT_LED_POSITION = 45 # LED position for alignment below grating
+SIPM_OFFSET = 13.86 #14.355 # Difference in height between SiPM and LeD for direct alignment. LED is lower.
+NUM_SWEEPS = 15
+
 class Motor:
     """
     Written by: Taylor Contreras (taylorcontreras@g.harvard.edu)
@@ -10,28 +17,29 @@ class Motor:
     to control a single motor in the
     metalens black box experiment. 
     """
+
     
     def __init__(self, board, step_pin, dir_pin, name):
         self.board = board
-        self.step_pin
-        self.dir_pin
+        self.step_pin = step_pin
+        self.dir_pin = dir_pin
         self.name = name
     
-    def step(direction=0):
+    def step(self, direction=0):
         """
         Moves the stepper motor one microstep.
 
         Inputs:
             direction (0 or 1): direction motor will move when stepped
         """
-        board.digital[self.dir_pin].write(direction) # direction pin
-        board.digital[self.step_pin].write(1)
+        self.board.digital[self.dir_pin].write(direction) # direction pin
+        self.board.digital[self.step_pin].write(1)
         #time.sleep(.01) # lowest windows can get is 10ms, motor runs faster if we remove the time delay 
-        board.digital[self.step_pin].write(0)
+        self.board.digital[self.step_pin].write(0)
         #time.sleep(.01)
         return
 
-    def MoveMotor(distance, ignore_limits=False):
+    def MoveMotor(self, distance, ignore_limits=False):
         """
         Moves either motor certain distance up or down.
 
@@ -43,31 +51,29 @@ class Motor:
         # Calculate number of steps needed
         dx_per_step = .005 # mm
         num_steps = int(distance // dx_per_step)
-        MoveSteps(num_steps, ignore_limits)
+        self.MoveSteps(num_steps, ignore_limits)
 
         return
 
-    def SetToZero():
+    def SetToZero(self):
         """
         Set motor to zero steps.
 
         Inputs:
             steps (int): steps value to move to
         """
-        SetSteps(0)
+        self.SetSteps(0)
 
-    def SetToTop():
+    def SetToTop(self):
         """
         Set motor to zero steps.
 
         Inputs:
             steps (int): steps value to move to
         """
-        for motor in ["led","sipm"]:
-            position = GetCurrentPosition(motor)
-            MoveMotor(board, MAX_Z-position-5, motor)
+        self.MoveMotor(MAX_Z-position-5)
 
-    def SetSteps(steps):
+    def SetSteps(self, steps):
         """
         Sets the motor a certain number of steps.
 
@@ -76,9 +82,9 @@ class Motor:
         """
         current_steps = GetCurrentNumSteps()
         steps_to_move = steps - current_steps
-        MoveSteps(steps_to_move)
+        self.MoveSteps(steps_to_move)
 
-    def MoveSteps(num_steps, ignore_limits=False):
+    def MoveSteps(self, num_steps, ignore_limits=False):
         """
         Moves the motor a certain number of steps.
 
@@ -96,7 +102,7 @@ class Motor:
         else:
             motor_direction = 1
 
-        current_num_steps = GetCurrentNumSteps()
+        current_num_steps = self.GetCurrentNumSteps()
         new_position = (current_num_steps+num_steps)*dx_per_step
         if not ignore_limits and (new_position > MAX_Z or new_position < 0.0):
             print('Warning: too large of distance to move motor')
@@ -104,33 +110,27 @@ class Motor:
 
         # Step the motor
         for i in range(abs(num_steps)):
-            step(motor_direction)
+            self.step(motor_direction)
             #time.sleep(0.01)
 
-        WriteNewNumSteps(current_num_steps+num_steps)
+        self.WriteNewNumSteps(current_num_steps+num_steps)
 
         return
 
-    def GetCurrentNumSteps():
+    def GetCurrentNumSteps(self):
         """
         Reads the text file that stores the current number of step the sipm and motor
         have moved and returns the position based on the motor input in mm
         """
         rows = []
-        with open('positions.csv', 'r') as file:
+        with open('position_'+self.name+'.csv', 'r') as file:
             reader = csv.reader(file)
             for row in reader:
                 rows.append(row)
 
-        if motor=='sipm':
-            return int(rows[0][0])
-        elif motor=='led':
-            return int(rows[0][1])
-        else:
-            print('Not a valid input')
-            return
+        return int(rows[0][0])
 
-    def GetCurrentPosition():
+    def GetCurrentPosition(self):
         """
         Reads the text file that stores the current position of the motor
         and returns the position based on the motor input in mm
@@ -144,12 +144,12 @@ class Motor:
         
         return int(rows[0][0])*dx_per_step
 
-    def WriteNewNumSteps(position):
+    def WriteNewNumSteps(self, position):
         """
         Writes to the text file the new number of steps of the device from the bottom 
         """
         
-        pos = GetCurrentNumSteps()
+        pos = self.GetCurrentNumSteps()
 
         with open('positions.csv', 'w', newline='') as file:
             file.truncate()
@@ -159,6 +159,14 @@ class Motor:
 
         return
 
+    def CreatePositionFile(self):
+        """
+        Creates the file to hold the position of the motor, set the motor
+        at zero. 
+        """
+        with open('position_'+self.name+'.csv', mode='w') as file:
+            writer = csv.writer(file)
+            writer.writerow([0])
 
 
 

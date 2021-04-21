@@ -10,6 +10,13 @@ from motor import Motor
 import matplotlib.pyplot as plt
 from scipy import signal
 
+MAX_Z = 231. # Mazimum allowable height in mm
+GRATING_LED_POSITION = 70. # LED position for alignment with grating
+BELOW_GRATING_LED_POSITION = 67 # LED position for alignment below grating
+BELOW_MOUNT_LED_POSITION = 45 # LED position for alignment below grating
+SIPM_OFFSET = 13.86 #14.355 # Difference in height between SiPM and LeD for direct alignment. LED is lower.
+NUM_SWEEPS = 15
+
 
 def Align(sipm_motor, led_motor, align_to='grating'):
     """
@@ -44,7 +51,7 @@ def Align(sipm_motor, led_motor, align_to='grating'):
     return
 
 
-def GetAlignment(sipm_motor, led_motor, scope)
+def GetAlignment(sipm_motor, led_motor, scope):
     """
     Run this after a change to the setup to get the new offset between SiPM and LED.
     Set both to bottom then move SiPM up 40mm to have it move across the LED. 
@@ -94,3 +101,11 @@ def GetAlignment(sipm_motor, led_motor, scope)
     # Remember to update global variable at the top of the workbook once a new SIPM_OFFSET is measured.
     
     return SIPM_OFFSET
+
+def ResetZero(sipm_motor, led_motor):
+    # Unplug motors and move them to bottom first
+    sipm_motor.WriteNewNumSteps(0,"sipm")
+    led_motor.WriteNewNumSteps(0,"led")
+    
+    return
+

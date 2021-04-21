@@ -34,7 +34,7 @@ def ScanMaxes(sipm_motor, led_motor, scope, width=40., num_measurements=200, ali
 
     return position_led, positions_sipm, maxes
 
-def Run_Voltage_v_Intensity(sipm_motor, led_motor, scope, dV=0.1, num_sweeps=15):
+def Run_Voltage_v_Intensity(sipm_motor, led_motor, scope, dV=0.1, num_sweeps=15, file_name='new_V_v_I.csv'):
     """
     A run that increased the voltage by dV (currently must
     be done by hand), and plots led voltage versus
@@ -54,9 +54,20 @@ def Run_Voltage_v_Intensity(sipm_motor, led_motor, scope, dV=0.1, num_sweeps=15)
     plt.xlabel('LED Voltage')
     plt.ylabel('SiPM Max Voltage')
     
+    with open(file_name, mode='w') as file:
+        writer = csv.writer(file)
+
+        writer.writerow(['50ns width'])
+        writer.writerow([0.1*(i+1) for i in range(num_measurements)])
+        writer.writerow(values_50ns)
+
+        writer.writerow(['250ns width'])
+        writer.writerow([0.1*(i+1) for i in range(num_measurements)])
+        writer.writerow(values_250ns)
+    
     return
 
-def Run(file_name, sipm_motor, led_motor, scope, voltage=5.0, num_sweeps):
+def Run(file_name, sipm_motor, led_motor, scope, voltage=5.0, num_sweeps=15):
     """
     This function takes two data sets, measuring the peak
     intensity of the sipm over a given width centered at 
@@ -70,14 +81,14 @@ def Run(file_name, sipm_motor, led_motor, scope, voltage=5.0, num_sweeps):
         writer = csv.writer(file)
 
         print("With grating")
-        position_led_g, positions_sipm_g, maxes_g = ScanMaxes(sipm_motor, led_motor, scope, width, num_measurements, align_to='grating', num_sweeps)
+        position_led_g, positions_sipm_g, maxes_g = ScanMaxes(sipm_motor, led_motor, scope, width, num_measurements, align_to='grating', num_sweeps=num_sweeps)
         writer.writerow(['with grating'])
         writer.writerow([position_led_g])
         writer.writerow(positions_sipm_g)
         writer.writerow(maxes_g)
 
         print('Below grating')
-        position_led_bg, positions_sipm_bg, maxes_bg = ScanMaxes(sipm_motor, led_motor, scope, width, num_measurements, align_to='below_grating', num_sweeps)
+        position_led_bg, positions_sipm_bg, maxes_bg = ScanMaxes(sipm_motor, led_motor, scope, width, num_measurements, align_to='below_grating', num_sweeps=num_sweeps)
         writer.writerow(['below grating'])
         writer.writerow([position_led_bg])
         writer.writerow(positions_sipm_bg)
