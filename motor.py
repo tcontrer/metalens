@@ -80,7 +80,7 @@ class Motor:
         Inputs:
             steps (int): steps value to move to
         """
-        current_steps = GetCurrentNumSteps()
+        current_steps = self.GetCurrentNumSteps()
         steps_to_move = steps - current_steps
         self.MoveSteps(steps_to_move)
 
@@ -149,13 +149,11 @@ class Motor:
         Writes to the text file the new number of steps of the device from the bottom 
         """
         
-        pos = self.GetCurrentNumSteps()
-
-        with open('positions.csv', 'w', newline='') as file:
+        with open('position_'+str(self.name)+'.csv', 'w', newline='') as file:
             file.truncate()
             writer = csv.writer(file)
             
-            writer.writerow([pos])
+            writer.writerow([position])
 
         return
 
