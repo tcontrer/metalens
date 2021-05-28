@@ -19,11 +19,15 @@ class Motor:
     """
 
     
-    def __init__(self, board, step_pin, dir_pin, name):
+    def __init__(self, board, step_pin, dir_pin, button_pin, name):
         self.board = board
         self.step_pin = step_pin
         self.dir_pin = dir_pin
+        self.button_pin = button_pin
         self.name = name
+        
+        # Setup the button pin to take input from button
+        board.digital[button_pin].mode = pyfirmata.INPUT
     
     def step(self, direction=0):
         """
@@ -84,7 +88,7 @@ class Motor:
         steps_to_move = steps - current_steps
         self.MoveSteps(steps_to_move)
 
-    def MoveSteps(self, num_steps, ignore_limits=False):
+    def MoveSteps(self, num_steps, ignore_button=False):
         """
         Moves the motor a certain number of steps.
 
@@ -102,17 +106,15 @@ class Motor:
         else:
             motor_direction = 1
 
-        current_num_steps = self.GetCurrentNumSteps()
-        new_position = (current_num_steps+num_steps)*dx_per_step
-        if not ignore_limits and (new_position > MAX_Z or new_position < 0.0):
-            print('Warning: too large of distance to move motor')
-            return
-
         # Step the motor
         for i in range(abs(num_steps)):
+            push_button = self.board.digital[self.button_pin].read()
+            if push_button and not ignore_button:
+                self.AlertAtEdge(num_steps//abs(num_steps))
+                break
             self.step(motor_direction)
-            #time.sleep(0.01)
 
+        current_num_steps = self.GetCurrentNumSteps()
         self.WriteNewNumSteps(current_num_steps+num_steps)
 
         return
@@ -165,6 +167,19 @@ class Motor:
         with open('position_'+self.name+'.csv', mode='w') as file:
             writer = csv.writer(file)
             writer.writerow([0])
-
-
-
+            
+    def AlertAtEdge(self, original_dir):
+        """
+        Alerts the user that the motor has reached the edge of its movement
+        and moves it 10 steps in the oposite direction.
+        
+        Inputs:
+            original_dir (-1 or 1): The original direction of movement
+        """
+        current_pos = self.GetCurrentPosition()
+        print('--------------------WARNING!---------------------')
+        print(str(self.name)+' motor has reached edge (at '+str(current_pos)+' mm)')
+        self.MoveSteps(-1*original_dir*1000, ignore_button=True)
+        print('Moved away from edge, new positions is '+str(self.GetCurrentPosition())+' mm')
+        print('-------------------------------------------------')
+        return
