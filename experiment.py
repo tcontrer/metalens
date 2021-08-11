@@ -1,9 +1,10 @@
 """
 Written by: Taylor Contreras (taylorcontreras@g.harvard.edu)
+Daet: 2021
 
 This class controls defines the functions avaible
 to align the motors in the
-metalens black box experiment. 
+diffraction lens black box experiment. 
 """
 
 from motor import Motor
@@ -129,11 +130,25 @@ class Experiment:
         return
 
     def ResetZero(self):
+        """
+        Writes the positions as zero. This is for
+        a hard reset of the positions in case of
+        skipping motors and incorrect position output. 
+        """
         # Unplug motors and move them to bottom first
         print('Unplug motors and move them to the bottom')
         self.sipm_motor.WriteNewNumSteps(0)
         self.led_motor.WriteNewNumSteps(0)
 
+        return
+    
+    def Reset(self):
+        """
+        Resets the motors to align at the top of the poles. 
+        The buttons will align them 10mm below the push button. 
+        """
+        self.sipm_motor.MoveMotor(250.)
+        self.led_motor.MoveMotor(250.)
         return
     
     def ScanMaxes(self, width=40., num_measurements=200, align_to='grating'):

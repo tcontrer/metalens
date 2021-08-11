@@ -12,6 +12,7 @@ NUM_SWEEPS = 15
 class Motor:
     """
     Written by: Taylor Contreras (taylorcontreras@g.harvard.edu)
+    Date: 2021
 
     This class controls defines the functions avaible
     to control a single motor in the
@@ -58,6 +59,23 @@ class Motor:
         self.MoveSteps(num_steps, ignore_limits)
 
         return
+    
+    def Rotate(self, degrees)
+        """
+        Moves the motor a number of degrees clockwise
+        or counterclockwise. Minimum degree is 1.8
+        
+        Inputs:
+            degrees (float): degrees to rotate
+        """
+        steps = int(degrees / 1.8)
+        if steps < 1:
+            print('Minimum rotation is 1.8 degrees')
+            
+        MoveSteps(steps, ignore_button=True)
+        
+        return
+        
 
     def SetToZero(self):
         """
@@ -178,7 +196,7 @@ class Motor:
         """
         current_pos = self.GetCurrentPosition()
         print('--------------------WARNING!---------------------')
-        print(str(self.name)+' motor has reached edge (at '+str(current_pos)+' mm)')
+        print(str(self.name)+' motor has reached edge')
         self.MoveSteps(-1*original_dir*1000, ignore_button=True)
         print('Moved away from edge, new positions is '+str(self.GetCurrentPosition())+' mm')
         print('-------------------------------------------------')
