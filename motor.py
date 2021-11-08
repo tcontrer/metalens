@@ -2,12 +2,7 @@ import pyfirmata
 import time
 import csv
 
-MAX_Z = 231. # Mazimum allowable height in mm
-GRATING_LED_POSITION = 70. # LED position for alignment with grating
-BELOW_GRATING_LED_POSITION = 67 # LED position for alignment below grating
-BELOW_MOUNT_LED_POSITION = 45 # LED position for alignment below grating
-SIPM_OFFSET = 13.86 #14.355 # Difference in height between SiPM and LeD for direct alignment. LED is lower.
-NUM_SWEEPS = 15
+MAX_D = 231. # Maximum distance (length of rod) in mm
 
 class Motor:
     """
@@ -20,15 +15,25 @@ class Motor:
     """
 
     
-    def __init__(self, board, step_pin, dir_pin, button_pin, name):
+    def __init__(self, board, step_pin, dir_pin, name, button_pin=0):
         self.board = board
         self.step_pin = step_pin
         self.dir_pin = dir_pin
         self.button_pin = button_pin
         self.name = name
         
-        # Setup the button pin to take input from button
-        board.digital[button_pin].mode = pyfirmata.INPUT
+        self.ignore_button = True
+        if button_pin != 0:
+            # Setup the button pin to take input from button
+            self.ignore_button = False
+            #board.digital[button_pin].mode = pyfirmata.INPUT
+            
+            
+    def PrintInfo(self):
+        print('Motor name: '+self.name)
+        print('    Step pin: '+str(self.step_pin))
+        print('    Dir pin: '+str(self.dir_pin))
+        print('    Button pin: '+str(self.button_pin))
     
     def step(self, direction=0):
         """
@@ -43,69 +48,7 @@ class Motor:
         self.board.digital[self.step_pin].write(0)
         #time.sleep(.01)
         return
-
-    def MoveMotor(self, distance, ignore_limits=False):
-        """
-        Moves either motor certain distance up or down.
-
-        Inputs:
-            distance (float): the distance to move the device, in mm
-            ignore_limits (True/False):
-        """
-
-        # Calculate number of steps needed
-        dx_per_step = .005 # mm
-        num_steps = int(distance // dx_per_step)
-        self.MoveSteps(num_steps, ignore_limits)
-
-        return
     
-    def Rotate(self, degrees)
-        """
-        Moves the motor a number of degrees clockwise
-        or counterclockwise. Minimum degree is 1.8
-        
-        Inputs:
-            degrees (float): degrees to rotate
-        """
-        steps = int(degrees / 1.8)
-        if steps < 1:
-            print('Minimum rotation is 1.8 degrees')
-            
-        MoveSteps(steps, ignore_button=True)
-        
-        return
-        
-
-    def SetToZero(self):
-        """
-        Set motor to zero steps.
-
-        Inputs:
-            steps (int): steps value to move to
-        """
-        self.SetSteps(0)
-
-    def SetToTop(self):
-        """
-        Set motor to zero steps.
-
-        Inputs:
-            steps (int): steps value to move to
-        """
-        self.MoveMotor(MAX_Z-position-5)
-
-    def SetSteps(self, steps):
-        """
-        Sets the motor a certain number of steps.
-
-        Inputs:
-            steps (int): steps value to move to
-        """
-        current_steps = self.GetCurrentNumSteps()
-        steps_to_move = steps - current_steps
-        self.MoveSteps(steps_to_move)
-
     def MoveSteps(self, num_steps, ignore_button=False):
         """
         Moves the motor a certain number of steps.
@@ -126,16 +69,82 @@ class Motor:
 
         # Step the motor
         for i in range(abs(num_steps)):
-            push_button = self.board.digital[self.button_pin].read()
-            if push_button and not ignore_button:
-                self.AlertAtEdge(num_steps//abs(num_steps))
-                break
+            if not ignore_button and not self.ignore_button:
+                push_button = self.board.digital[self.button_pin].read()
+                #print(push_button)
+                if push_button:
+                    self.AlertAtEdge(num_steps//abs(num_steps))
+                    break
             self.step(motor_direction)
 
         current_num_steps = self.GetCurrentNumSteps()
         self.WriteNewNumSteps(current_num_steps+num_steps)
 
         return
+
+    def MoveMotor(self, distance, ignore_limits=False):
+        """
+        Moves either motor certain distance up or down.
+
+        Inputs:
+            distance (float): the distance to move the device, in mm
+            ignore_limits (True/False):
+        """
+
+        # Calculate number of steps needed
+        dx_per_step = .005 # mm
+        num_steps = int(distance // dx_per_step)
+        self.MoveSteps(num_steps, ignore_limits)
+
+        return
+    
+    def Rotate(self, degrees):
+        """
+        Moves the motor a number of degrees clockwise
+        or counterclockwise. Minimum degree is 1.8/8.
+        1600 steps in one full rotation.
+        
+        Inputs:
+            degrees (float): degrees to rotate
+        """
+        steps = int(degrees / (1.8/8.))
+        if abs(steps) < 1:
+            print('Minimum rotation is 1.8 degrees')
+            
+        self.MoveSteps(steps, ignore_button=True)
+        
+        return
+        
+
+    def SetToZero(self):
+        """
+        Set motor to zero steps.
+
+        Inputs:
+            steps (int): steps value to move to
+        """
+        self.SetSteps(0)
+        return
+
+    def SetToTop(self):
+        """
+        Set motor to zero steps.
+
+        Inputs:
+            steps (int): steps value to move to
+        """
+        self.MoveMotor(MAX_D-position-5)
+
+    def SetSteps(self, steps):
+        """
+        Sets the motor a certain number of steps.
+
+        Inputs:
+            steps (int): steps value to move to
+        """
+        current_steps = self.GetCurrentNumSteps()
+        steps_to_move = steps - current_steps
+        self.MoveSteps(steps_to_move)
 
     def GetCurrentNumSteps(self):
         """
