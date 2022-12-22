@@ -4,34 +4,36 @@ Daet: 2021
 
 This class controls defines the functions avaible
 to align the motors in the
-metalens black box experiment with a SiPM. 
+metalens black box experiment with a power monitor. 
 """
 
 from motor import Motor
 import matplotlib.pyplot as plt
 from scipy import signal
 from scipy.optimize import curve_fit
-from oscilloscope import MeasurePeaktoPeak
 import csv
 import time
+from datetime import datetime
+from ctypes import *
 from IPython.display import display, clear_output
 import numpy as np
 
 class Experiment:
     
-    def __init__(self, rot_motor, lens_motor, led_motor, sipm_motor, scope, align_with_file=False):
+    def __init__(self, rot_motor, lens_motor, led_motor, powermeter_motor, tlPM, align_with_file=False):
         self.rot_motor = rot_motor
         self.lens_motor = lens_motor
         self.led_motor = led_motor
-        self.sipm_motor = sipm_motor
-        self.motor_dict = {'rot':self.rot_motor, 'lens':self.lens_motor, 'led':self.led_motor, 'sipm':self.sipm_motor}
-        self.scope = scope
+        self.powermeter_motor = powermeter_motor
+        self.tlPM = tlPM
+        self.motor_dict = {'rot':self.rot_motor, 'lens':self.lens_motor, 'led':self.led_motor, 'powermeter':self.powermeter_motor}
         self.motor_dtheta = 1.8/8.
         self.num_sweeps = 15
+        self.sleep = 0.01
         
         if align_with_file:
             self.alignments = {}
-            with open('motor_positions/alignment.csv', 'r') as file:
+            with open('alignment_pm.csv', 'r') as file:
                 reader = csv.reader(file)
                 for row in reader:
                     if row[0] == 'rot_center':
@@ -39,7 +41,7 @@ class Experiment:
                     else:
                         self.alignments[row[0]] = float(row[1])
         else:
-            self.alignments = {'sipm_center': 117.37,
+            self.alignments = {'powermeter_center': 117.37,
                                  'led_center': 161.0,
                                  'lens_center': 176.39,
                                  'lens_diam': 9.8,
@@ -52,25 +54,28 @@ class Experiment:
     def PrintInfo(self):
         print('---Experiment---')
         self.lens_motor.PrintInfo()
-        self.sipm_motor.PrintInfo()
-        
-        if self.GetRotOrLED() == 'rot':
-            self.rot_motor.PrintInfo()
-            print('LED motor off')
-        else:
-            self.led_motor.PrintInfo
-            print('Rotation motor off')
+        self.powermeter_motor.PrintInfo()
+        self.rot_motor.PrintInfo()
+        self.led_motor.PrintInfo()
             
         print('--Alignments--')
         for key in self.alignments:
             print('    '+key+' = '+str(self.alignments[key]))
 
-        print('Oscilloscope: '+self.scope.query('*IDN?'))
         print('    Number of Sweeps: '+str(self.num_sweeps))
         
-    def Set_sweeps(self, num_sweeps):
-        self.num_sweeps = num_sweeps
-        return
+    def MeasurePower(self, samples=15, sleep=0.01):
+        power_measurements = []
+        times = []
+        count = 0
+        while count < samples:
+            power =  c_double()
+            self.tlPM.measPower(byref(power))
+            power_measurements.append(power.value)
+            count+=1
+            time.sleep(sleep)
+
+        return np.mean(power_measurements)
         
     def GetRotOrLED(self):
         # We only have enough power for 3 motors, so
@@ -78,7 +83,7 @@ class Experiment:
         # change rot_or_led to either 'rot' or 'led'
         
         rows = []
-        with open('motor_positions/rot_or_led_on.csv', 'r') as file:
+        with open('rot_or_led_on.csv', 'r') as file:
             reader = csv.reader(file)
             for row in reader:
                 rows.append(row)
@@ -90,7 +95,7 @@ class Experiment:
         is currently powered.
         """
         print('Manually connect '+motor_name+' motor and disconnect '+self.GetRotOrLED()+' motor')
-        with open('motor_positions/rot_or_led_on.csv', 'w', newline='') as file:
+        with open('rot_or_led_on.csv', 'w', newline='') as file:
             file.truncate()
             writer = csv.writer(file)
             
@@ -101,7 +106,7 @@ class Experiment:
         return
     
     def WriteAlignment(self):
-        with open('motor_positions/alignment.csv', 'w', newline='') as file:
+        with open('alignment_pm.csv', 'w', newline='') as file:
             file.truncate()
             writer = csv.writer(file)
     
@@ -115,15 +120,15 @@ class Experiment:
         if motor_name is the led that the led is on. 
         """
         
-        if motor_name == 'led':
-            if self.GetRotOrLED() == 'led':
-                self.led_motor.MoveMotor(distance)
-            else:
-                print('led motor is off. Switch power manually and use SwitchMotor')
-        elif motor_name == 'rot':
-            print('rot motor is for rotations. Use Rotate()')
-        else:
-            self.motor_dict[motor_name].MoveMotor(distance)
+        #if motor_name == 'led':
+        #    if self.GetRotOrLED() == 'led':
+        #        self.led_motor.MoveMotor(distance)
+        #    else:
+        #        print('led motor is off. Switch power manually and use SwitchMotor')
+        #elif motor_name == 'rot':
+        #    print('rot motor is for rotations. Use Rotate()')
+        #else:
+        self.motor_dict[motor_name].MoveMotor(distance)
         return
     
     def RotateLens(self, degrees):
@@ -132,10 +137,10 @@ class Experiment:
         motor has powered. 
         """
         
-        if self.GetRotOrLED() == 'rot':
-            self.rot_motor.Rotate(degrees)
-        else:
-            print('rot motor is off. Switch power manually and use SwitchMotor()')
+        #if self.GetRotOrLED() == 'rot':
+        self.rot_motor.Rotate(degrees)
+        #else:
+        #    print('rot motor is off. Switch power manually and use SwitchMotor()')
         return  
     
     def ScanLens(self, width=40., num_measurements=200, print_progress=True):
@@ -145,7 +150,7 @@ class Experiment:
         """
 
         distance_to_move = width/num_measurements
-        maxes = []
+        power = []
         positions_lens = []
         self.lens_motor.MoveMotor(-width/2.)
         for i in range(num_measurements):
@@ -153,28 +158,28 @@ class Experiment:
                 clear_output(wait=True)
                 display(str(i+1)+"/"+str(num_measurements))
                 if i > 0:
-                    plt.plot(positions_lens, maxes)
+                    plt.plot(positions_lens, power)
                     plt.title('ScanLens Scanning Progress')
                     plt.show()
 
             self.lens_motor.MoveMotor(distance_to_move)
             positions_lens.append(self.lens_motor.GetCurrentPosition())
 
-            maxes.append(MeasurePeaktoPeak(self.scope, self.num_sweeps))
+            power.append(self.MeasurePower())
         self.lens_motor.MoveMotor(-width/2.)
 
         clear_output()
 
-        return positions_lens, maxes
+        return positions_lens, power
     
     def ScanLED(self, width_led=12., width_lens=12., num_measurements_led=20, num_measurements_lens=20, print_progress=True):
         """
         Scans the led across the lens, while scanning the lens across the led at each position of the led.
         Assumes everything is centered initially.
         """
-        if self.GetRotOrLED() == 'rot':
-            print('led motor is off. Use SwitchMotor and switch power manually')
-            return
+        #if self.GetRotOrLED() == 'rot':
+        #    print('led motor is off. Use SwitchMotor and switch power manually')
+        #    return
         
         dist_move_led = width_led/num_measurements_led
         self.led_motor.MoveMotor(-width_led/2.)
@@ -185,8 +190,8 @@ class Experiment:
                 clear_output(wait=True)
                 display('LED step: '+str(step_led+1)+"/"+str(num_measurements_led))
 
-            positions_lens, maxes = self.ScanLens(width_lens, num_measurements_lens, print_progress=False)
-            led_data.append([positions_lens, maxes, self.led_motor.GetCurrentPosition()])
+            positions_lens, power = self.ScanLens(width_lens, num_measurements_lens, print_progress=False)
+            led_data.append([positions_lens, power, self.led_motor.GetCurrentPosition()])
             self.led_motor.MoveMotor(dist_move_led)
             
         self.led_motor.MoveMotor(-width_led/2.)
@@ -196,12 +201,12 @@ class Experiment:
     
     def ScanRotation(self, scan_degrees, num_steps, print_progress=True):
         """
-        Measures the SiPM signal across a number of rotation of the lens.
+        Measures the powermeter signal across a number of rotation of the lens.
         """
         
-        if self.GetRotOrLED() == 'led':
-            print('rot motor is off. Use SwitchPower and switch power manually')
-            return 
+        #if self.GetRotOrLED() == 'led':
+        #    print('rot motor is off. Use SwitchPower and switch power manually')
+        #    return 
         
         # Round degrees so we take a whole number of steps
         dtheta = ((scan_degrees/num_steps) // self.motor_dtheta) * self.motor_dtheta
@@ -214,38 +219,38 @@ class Experiment:
                 clear_output(wait=True)
                 display('Rot step: '+str(step+1)+"/"+str(num_steps))
 
-            rot_data.append([self.rot_motor.GetCurrentNumSteps(), MeasurePeaktoPeak(self.scope, 10)])
+            rot_data.append([self.rot_motor.GetCurrentNumSteps(), self.MeasurePower()])
             self.rot_motor.Rotate(dtheta)
         self.rot_motor.Rotate(-scan_degrees/2.)
         
         return np.array(rot_data)
     
-    def FindSiPMCenter(self, width=20., num_measurements=100):
+    def FindPowerMeterCenter(self, width=20., num_measurements=100):
         """
-        Moves the lens away from the center, scans the sipm across
-        the led and finds the center position of the SiPM. 
+        Moves the lens away from the center, scans the powermeter across
+        the led and finds the center position of the powermeter. 
         """
         self.lens_motor.MoveMotor(-40)
-        position_led, positions_sipm, maxes = self.ScanMaxes(width, num_measurements)
+        position_led, positions_powermeter, power = self.ScanPower(width, num_measurements)
         self.lens_motor.MoveMotor(40)
-        plt.plot(positions_sipm, maxes)
+        plt.plot(positions_powermeter, power)
         
-        print('Old SiPM center = '+str(self.alignments['sipm_center']))
-        self.alignments['sipm_center'] = positions_sipm[np.argmax(np.array(maxes))]
-        print('New SiPM center = '+str(self.alignments['sipm_center']))
+        print('Old powermeter center = '+str(self.alignments['powermeter_center']))
+        self.alignments['powermeter_center'] = positions_powermeter[np.argmax(np.array(power))]
+        print('New powermeter center = '+str(self.alignments['powermeter_center']))
         
         self.WriteAlignment()
         
-        return position_led, positions_sipm, maxes
+        return position_led, positions_powermeter, power
     
-    def FindLensData(self, positions_lens, maxes, width=4, prominence=0.02):
+    def FindLensData(self, positions_lens, power, width=4, prominence=0.02):
         """
         Finds the negative peaks due to the edges of the mount, 
         calculates the center and diameter of the mount, and 
         returns the data only between the mount edges.
         """
-        peaks, _ = signal.find_peaks(np.array(maxes)*-1, width=width, prominence=prominence)
-        widths = signal.peak_widths(np.array(maxes)*-1, peaks)
+        peaks, _ = signal.find_peaks(np.array(power)*-1, width=width, prominence=prominence)
+        widths = signal.peak_widths(np.array(power)*-1, peaks)
         [print('Mount edges', positions_lens[int(widths[2][peak])], positions_lens[int(widths[3][peak])]) for peak in range(len(peaks))]
 
         if len(peaks) > 1:
@@ -258,7 +263,7 @@ class Experiment:
             
         self.WriteAlignment()
         
-        return positions_lens[int(widths[2][0])+5:int(widths[3][-1])-5], maxes[int(widths[2][0])+5:int(widths[3][-1])-5]
+        return positions_lens[int(widths[2][0])+5:int(widths[3][-1])-5], power[int(widths[2][0])+5:int(widths[3][-1])-5]
     
     def FindLensCenter(self, lens_data, mount_prominence=0.05, glass_prominence=0.01):
         """
@@ -305,11 +310,11 @@ class Experiment:
         self.alignments['lens_center'] = lens_center
 
         plt.plot(lens_data[0], lens_data[1], label='data')
-        plt.vlines(lens_left_edge, 0,.15, color='r', label='lens edges')
-        plt.vlines(lens_right_edge, 0, .15, color='r')
-        plt.vlines(lens_center, 0, .15, color='y', label='lens_center')
+        plt.vlines(lens_left_edge, 0,.15e-8, color='r', label='lens edges')
+        plt.vlines(lens_right_edge, 0, .15e-8, color='r')
+        plt.vlines(lens_center, 0, .15e-8, color='y', label='lens_center')
         plt.xlabel('Lens position [mm]')
-        plt.ylabel('SiPM signal [V]')
+        plt.ylabel('powermeter signal [V]')
         plt.legend()
         plt.show()
         
@@ -334,12 +339,12 @@ class Experiment:
         led_positions = []
         for step in led_data:
             positions_lens = step[0]
-            maxes = step[1]
+            power = step[1]
             led_position = step[2]
 
             # Find peak
-            peaks, _ = signal.find_peaks(np.array(maxes), prominence=prominence)
-            widths = signal.peak_widths(np.array(maxes), peaks)
+            peaks, _ = signal.find_peaks(np.array(power), prominence=prominence)
+            widths = signal.peak_widths(np.array(power), peaks)
 
             if len(peaks) > 0:
                 lens_edges.append(positions_lens[int(widths[3][0])])
@@ -366,7 +371,7 @@ class Experiment:
     
     def FindLensRotationAlignment(self, rot_data, prominence):
         """
-        Calls ScanRotation to rotate the lens, measuring the SiPM signal at each step.
+        Calls ScanRotation to rotate the lens, measuring the powermeter signal at each step.
         The signal will dip as the lens rotates so that the edges stick out in front
         of the LED, but will peak again once the lens is rotated enough. This function
         finds the center position of the center peak, corresponding to the edges 
@@ -392,7 +397,7 @@ class Experiment:
                   
         self.WriteAlignment()
         plt.plot(angles, rot_data[:,1])
-        plt.vlines((center_step - rot_data[len(rot_data[:,0])//2,0])*(1.8/8.), 0, .08, color='r',label='center')
+        plt.vlines((center_step - rot_data[len(rot_data[:,0])//2,0])*(1.8/8.), 0, .08e-7, color='r',label='center')
         plt.legend()
         plt.show()
 
@@ -401,34 +406,36 @@ class Experiment:
 
     def Align(self, motor='all'):
         """
-        Align the sipm, lens, and led to center
+        Align the powermeter, lens, and led to center
         """
-        if motor == 'sipm':
-            self.sipm_motor.MoveMotor(self.alignments['sipm_center'] - self.sipm_motor.GetCurrentPosition())
+        if motor == 'powermeter':
+            self.powermeter_motor.MoveMotor(self.alignments['powermeter_center'] - self.powermeter_motor.GetCurrentPosition())
         elif motor == 'lens':
             self.lens_motor.MoveMotor(self.alignments['lens_center'] - self.lens_motor.GetCurrentPosition())
         
-        elif self.GetRotOrLED() == motor:
-            if motor == 'led':
-                self.led_motor.MoveMotor(self.alignments['led_center'] - self.led_motor.GetCurrentPosition())
-            elif motor == 'rot':
-                self.rot_motor.MoveSteps(self.alignments['rot_center'] - self.rot_motor.GetCurrentNumSteps())
-                
+        #elif self.GetRotOrLED() == motor:
+        elif motor == 'led':
+            self.led_motor.MoveMotor(self.alignments['led_center'] - self.led_motor.GetCurrentPosition())
+        elif motor == 'rot':
+            self.rot_motor.MoveSteps(self.alignments['rot_center'] - self.rot_motor.GetCurrentNumSteps())
+
         elif motor == 'all':
-            self.sipm_motor.MoveMotor(self.alignments['sipm_center'] - self.sipm_motor.GetCurrentPosition())
+            self.powermeter_motor.MoveMotor(self.alignments['powermeter_center'] - self.powermeter_motor.GetCurrentPosition())
             self.lens_motor.MoveMotor(self.alignments['lens_center'] - self.lens_motor.GetCurrentPosition())
+            self.led_motor.MoveMotor(self.alignments['led_center'] - self.led_motor.GetCurrentPosition())
+            self.rot_motor.MoveSteps(self.alignments['rot_center'] - self.rot_motor.GetCurrentNumSteps())
             
-            if self.GetRotOrLED() == 'led':
-                self.led_motor.MoveMotor(self.alignments['led_center'] - self.led_motor.GetCurrentPosition())
-                print('Rotation motor is off. Switch motors to align')
-            else:
-                self.rot_motor.MoveSteps(self.alignments['rot_center'] - self.rot_motor.GetCurrentNumSteps())
-                print('LED motor is off. Switch motors to align')
+            #if self.GetRotOrLED() == 'led':
+            #    self.led_motor.MoveMotor(self.alignments['led_center'] - self.led_motor.GetCurrentPosition())
+            #    print('Rotation motor is off. Switch motors to align')
+            #else:
+            #    self.rot_motor.MoveSteps(self.alignments['rot_center'] - self.rot_motor.GetCurrentNumSteps())
+            #    print('LED motor is off. Switch motors to align')
               
-        elif (self.GetRotOrLED() == 'led' and motor == 'rot') or (self.GetRotOrLED() == 'rot' and motor == 'led'):
-            print(motor+' motor is off, you must switch motors to align')
+        #elif (self.GetRotOrLED() == 'led' and motor == 'rot') or (self.GetRotOrLED() == 'rot' and motor == 'led'):
+        #    print(motor+' motor is off, you must switch motors to align')
         else:
-            print('Invalid motor option. Option include sipm, lens, led, rot, and all')
+            print('Invalid motor option. Option include powermeter, lens, led, rot, and all')
 
         return
 
@@ -443,44 +450,44 @@ class Experiment:
         self.lens_motor.WriteNewNumSteps(0)
         self.led_motor.WriteNewNumSteps(0)
         self.rot_motor.WriteNewNumSteps(0)
-        self.sipm_motor.WriteNewNumSteps(0)
+        self.powermeter_motor.WriteNewNumSteps(0)
 
         return
     
     def Reset(self):
         """
-        Resets the lens and sipm motors to align at the 
+        Resets the lens and powermeter motors to align at the 
         top of the poles. The buttons will align them 
         10mm below the push button. 
         """
         self.lens_motor.MoveMotor(250.)
-        self.sipm_motor.MoveMotor(250.)
+        self.powermeter_motor.MoveMotor(250.)
         return
     
-    def ScanMaxes(self, width=40., num_measurements=200, align_to=None, print_progress=True):
+    def ScanPower(self, width=40., num_measurements=200, align_to=None, print_progress=True):
         """
-        Scan the max signal across the sipm with and without
+        Scan the max signal across the powermeter with and without
         the diffraction grating. 
         """     
         # Align and measure
         if align_to:
             self.Align(align_to)
-        self.sipm_motor.MoveMotor(-width/2.)
+        self.powermeter_motor.MoveMotor(-width/2.)
 
         # Measure voltage at each distance
         distance_to_move = width/num_measurements
-        maxes = []
-        positions_sipm = []
+        power = []
+        positions_powermeter = []
         position_led = self.led_motor.GetCurrentPosition()
         for i in range(num_measurements):
             if print_progress:
                 clear_output(wait=True)
                 display(str(i+1)+"/"+str(num_measurements))
-            self.sipm_motor.MoveMotor(distance_to_move)
-            maxes.append(MeasurePeaktoPeak(self.scope, self.num_sweeps))
-            positions_sipm.append(self.sipm_motor.GetCurrentPosition())
-        self.sipm_motor.MoveMotor(-width/2.)
+            self.powermeter_motor.MoveMotor(distance_to_move)
+            power.append(self.MeasurePower())
+            positions_powermeter.append(self.powermeter_motor.GetCurrentPosition())
+        self.powermeter_motor.MoveMotor(-width/2.)
             
-        return position_led, positions_sipm, maxes
+        return position_led, positions_powermeter, power
     
   

@@ -2,7 +2,7 @@
 Written by: Taylor Contreras (taylorcontreras@g.harvard.edu)
 Daet: 2021
 
-This class controls defines the functions avaible
+This class controls defines the functions available
 to align the motors in the
 diffraction lens black box experiment. 
 """
